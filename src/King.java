@@ -2,67 +2,23 @@ public class King extends Piece {
 	public King (Location obj, String color, String ImageSource) {
 		super(obj,color,ImageSource);
 	}
-	public void calculateLegalMovements() {
+	public void calculateLegalMovements(Piece[][] board) {
 		int column = getLocation().getColumn();
 		int row = getLocation().getRow();
-	getLegalMovements().clear();
-	if (row==0 && column==0) {
-		getLegalMovements().add(new Location(row,column+1));
-		getLegalMovements().add(new Location(row+1,column));
-		getLegalMovements().add(new Location(row+1,column+1));
-	}
-	else if (row==0 && column==7) {
-		getLegalMovements().add(new Location(row,column-1));
-		getLegalMovements().add(new Location(row+1,column));
-		getLegalMovements().add(new Location(row+1,column-1));	
-	}
-	else if (row==7 && column==0) {
-		getLegalMovements().add(new Location(row-1,column));
-		getLegalMovements().add(new Location(row,column+1));
-		getLegalMovements().add(new Location(row-1,column+1));	
-	}
-	else if (row==7 && column==7) {
-		getLegalMovements().add(new Location(row,column-1));
-		getLegalMovements().add(new Location(row-1,column));
-		getLegalMovements().add(new Location(row-1,column-1));
-	}
-	else if (row==0) {
-		getLegalMovements().add(new Location(row,column-1));
-		getLegalMovements().add(new Location(row,column+1));
-		getLegalMovements().add(new Location(row+1,column));
-		getLegalMovements().add(new Location(row+1,column-1));
-		getLegalMovements().add(new Location(row+1,column+1));
-	}
-	else if (row==7) {
-		getLegalMovements().add(new Location(row-1,column));
-		getLegalMovements().add(new Location(row,column-1));
-		getLegalMovements().add(new Location(row,column+1));
-		getLegalMovements().add(new Location(row-1,column+1));
-		getLegalMovements().add(new Location(row-1,column-1));
-	}
-	else if (column==0) {
-		getLegalMovements().add(new Location(row+1,column+1));
-		getLegalMovements().add(new Location(row-1,column+1));
-		getLegalMovements().add(new Location(row,column+1));
-		getLegalMovements().add(new Location(row-1,column));
-		getLegalMovements().add(new Location(row+1,column));
-	}
-	else if (column==7) {
-		getLegalMovements().add(new Location(row-1,column));
-		getLegalMovements().add(new Location(row+1,column));
-		getLegalMovements().add(new Location(row,column-1));
-		getLegalMovements().add(new Location(row-1,column-1));
-		getLegalMovements().add(new Location(row+1,column-1));
-	}
-	else {
-		getLegalMovements().add(new Location(row,column-1));
-		getLegalMovements().add(new Location(row,column+1));
-		getLegalMovements().add(new Location(row-1,column));
-		getLegalMovements().add(new Location(row+1,column));
-		getLegalMovements().add(new Location(row-1,column+1));
-		getLegalMovements().add(new Location(row-1,column-1));
-		getLegalMovements().add(new Location(row+1,column+1));
-		getLegalMovements().add(new Location(row+1,column-1));
-	}
+		getLegalMovements().clear();
 
-}}
+		int[][] offsets = {
+			{0,1},{0,-1},{1,0},{-1,0},
+			{1,1},{1,-1},{-1,1},{-1,-1}
+		};
+		for (int[] off : offsets) {
+			int r = row + off[0];
+			int c = column + off[1];
+			if (r>=0 && r<=7 && c>=0 && c<=7) {
+				if (board[r][c] == null || !board[r][c].getColor().equals(getColor())) {
+					getLegalMovements().add(new Location(r,c));
+				}
+			}
+		}
+	}
+}

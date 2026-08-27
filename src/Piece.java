@@ -41,5 +41,6 @@ public abstract class Piece {
 	{
 		this.status=status;			
 	}
-	public abstract void calculateLegalMovements();
+	// NOTE: now takes the board so pieces can see what's blocking/capturable.
+	public abstract void calculateLegalMovements(Piece[][] board);
 }
