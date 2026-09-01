@@ -242,8 +242,67 @@ const state = {
   legalForSelected: [],
   gameOver: false,
   capturedByWhite: [], // black pieces white has taken
-  capturedByBlack: []  // white pieces black has taken
+  capturedByBlack: [], // white pieces black has taken
+  moveCount: 0,         // half-moves played so far
+  moveLog: [],          // { color, type, from, to } for every half-move
+  positionHistory: [],  // board hashes, for threefold repetition
+  fallbackTick: 0       // rotates the generic-advice phrasing pool
 };
+
+/* ---------------------------------------------------------------------
+   POSITION HASHING (for threefold repetition)
+   --------------------------------------------------------------------- */
+
+function boardHash(board, turn) {
+  let s = "";
+  for (let r = 0; r <= 7; r++) {
+    for (let c = 0; c <= 7; c++) {
+      const p = board[r][c];
+      s += p ? p.color[0] + p.type : ".";
+    }
+  }
+  return s + "_" + turn;
+}
+
+/* ---------------------------------------------------------------------
+   TACTICAL/POSITIONAL SIGNAL DETECTORS — used to build real insight
+   instead of repeating the same generic line every move.
+   --------------------------------------------------------------------- */
+
+function kingDangerCount(board, color) {
+  const king = findKing(board, color);
+  if (!king) return 0;
+  let count = 0;
+  for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    const r = king.row + dr, c = king.col + dc;
+    if (inBounds(r, c) && isSquareAttacked(board, r, c, enemyOf(color))) count++;
+  }
+  return count;
+}
+
+function forkTargetCount(boardAfter, to, color) {
+  let count = 0;
+  for (const m of pseudoLegalMoves(boardAfter, to.row, to.col)) {
+    const p = boardAfter[m.row][m.col];
+    if (p && p.color !== color) count++;
+  }
+  return count;
+}
+
+/* ---------------------------------------------------------------------
+   REPETITION / "STUCK" DETECTION
+   --------------------------------------------------------------------- */
+
+function checkOscillation(color) {
+  const own = state.moveLog.filter(m => m.color === color);
+  if (own.length < 3) return null;
+  const [m1, m2, m3] = own.slice(-3);
+  const sameSquares = m1.from.row === m3.to.row && m1.from.col === m3.to.col &&
+                       m1.to.row === m3.from.row && m1.to.col === m3.from.col;
+  const samePiece = m1.type === m2.type && m2.type === m3.type;
+  if (sameSquares && samePiece) return m3;
+  return null;
+}
 
 /* ---------------------------------------------------------------------
    COACH MESSAGES
@@ -258,43 +317,127 @@ function addNote(text, cls) {
   log.scrollTop = log.scrollHeight;
 }
 
-function giveMoveAdvice(movingType, capturedPiece, from, to) {
+let toastTimer = null;
+function showToast(label, text, cls) {
+  const toast = document.getElementById("coachToast");
+  toast.className = "coach-toast" + (cls ? " " + cls : "");
+  toast.querySelector(".toast-label").textContent = label;
+  toast.querySelector(".toast-text").textContent = text;
+  // force reflow so the animation re-triggers on rapid successive toasts
+  void toast.offsetWidth;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 4200);
+}
+
+const FALLBACK_INSIGHTS = [
+  "Think about which squares this piece now covers, and whether it's protected if it's attacked.",
+  "Consider what this move opens up or defends, and whether your opponent has a strong reply.",
+  "Ask yourself what your opponent's best response is before committing further to this plan.",
+  "Check whether this piece is doing more than one job right now — is it defending something important too?"
+];
+
+/**
+ * The core of the tutoring feature: picks the MOST SPECIFIC applicable
+ * insight for this exact move, rather than a fixed template. Priority:
+ * fork > king safety warning > rescue > pressuring the enemy king >
+ * phase-gated development/center advice > rotating generic fallback.
+ */
+function computeMoveInsight(boardBefore, boardAfter, from, to, movingType, color, moveNumber) {
+  const enemy = enemyOf(color);
+
+  const forks = forkTargetCount(boardAfter, to, color);
+  if (forks >= 2) {
+    return `That attacks ${forks} pieces at once — a fork. Your opponent can't save all of them, so watch what they give up.`;
+  }
+
+  const kingDangerBefore = kingDangerCount(boardBefore, color);
+  const kingDangerAfter = kingDangerCount(boardAfter, color);
+  if (kingDangerAfter > kingDangerBefore) {
+    return "Heads up — your king has a bit less cover now than before this move. Keep an eye out for checks.";
+  }
+
+  const wasInDanger = isSquareAttacked(boardBefore, from.row, from.col, enemy);
+  const landsInDanger = isSquareAttacked(boardAfter, to.row, to.col, enemy);
+  if (wasInDanger && !landsInDanger) {
+    return "That piece was under attack where it stood — this gets it to safety.";
+  }
+
+  const enemyKingDangerBefore = kingDangerCount(boardBefore, enemy);
+  const enemyKingDangerAfter = kingDangerCount(boardAfter, enemy);
+  if (enemyKingDangerAfter > enemyKingDangerBefore) {
+    return "This opens up lines toward your opponent's king — worth following up on next move.";
+  }
+
+  const central = (to.row === 3 || to.row === 4) && (to.col === 3 || to.col === 4);
+  if (moveNumber <= 10) {
+    if (movingType === "P" && central) {
+      return "Good instinct — controlling the center with a pawn early on gives your other pieces more options.";
+    }
+    if (movingType === "N" || movingType === "B") {
+      const backRank = from.row === 0 || from.row === 7;
+      if (backRank) {
+        return "That's called 'developing' a piece — getting it off the back rank early is usually strong.";
+      }
+    }
+  }
+
+  if (movingType === "K") {
+    return "Moving the king early can be risky since it's usually safer tucked behind your other pieces — make sure this was intentional.";
+  }
+
+  const insight = FALLBACK_INSIGHTS[state.fallbackTick % FALLBACK_INSIGHTS.length];
+  state.fallbackTick++;
+  return insight;
+}
+
+function giveMoveAdvice(boardBefore, boardAfter, movingType, capturedPiece, from, to, color, moveNumber) {
   const name = PIECE_NAMES[movingType];
   let msg;
 
   if (capturedPiece) {
-    msg = `Your ${name} captured the ${PIECE_NAMES[capturedPiece.type]}. `;
     const gained = PIECE_VALUES[capturedPiece.type] - PIECE_VALUES[movingType];
-    msg += gained >= 0
-      ? "That looks like a good trade — you gave up less material than you won."
-      : "Worth double-checking: you used a more valuable piece to take a less valuable one. Was there a reason (removing a defender, stopping a threat)?";
+    const forks = forkTargetCount(boardAfter, to, color);
+    msg = `Your ${name} captured the ${PIECE_NAMES[capturedPiece.type]}. `;
+    if (forks >= 2) {
+      msg += `And it's now attacking ${forks} more pieces too — good pressure.`;
+    } else if (gained >= 0) {
+      msg += "That looks like a good trade — you gave up less material than you won.";
+    } else {
+      msg += "Worth double-checking: you used a more valuable piece to take a less valuable one. Was there a reason (removing a defender, stopping a threat)?";
+    }
   } else {
     msg = `You moved your ${name} from ${fileRank(from.row, from.col)} to ${fileRank(to.row, to.col)}. `;
-    const central = (to.row === 3 || to.row === 4) && (to.col === 3 || to.col === 4);
-    if (movingType === "P" && central) {
-      msg += "Good instinct — controlling the center with a pawn early on gives your other pieces more options.";
-    } else if (movingType === "N" || movingType === "B") {
-      const backRank = from.row === 0 || from.row === 7;
-      msg += backRank
-        ? "Nice, that's called 'developing' a piece — getting it off the back rank early is usually strong."
-        : "Think about which squares this piece now covers, and whether it's protected if it's attacked.";
-    } else if (movingType === "K") {
-      msg += "Moving the king early can be risky since it's usually safer tucked behind your other pieces — make sure this was intentional.";
-    } else {
-      msg += "Consider what this move opens up or defends, and whether your opponent has a strong reply.";
-    }
+    msg += computeMoveInsight(boardBefore, boardAfter, from, to, movingType, color, moveNumber);
   }
+
   addNote(msg);
+  showToast("Coach", msg);
 }
 
-function opponentFeedback(movingType, capturedPiece, to) {
+function opponentFeedback(boardBefore, boardAfter, movingType, capturedPiece, to, aiColor) {
   let msg = "Opponent: ";
   if (capturedPiece) {
     msg += `Took your ${PIECE_NAMES[capturedPiece.type]} with a ${PIECE_NAMES[movingType]}. Was that piece defended? Worth checking before your next move.`;
   } else {
-    msg += `Moved a ${PIECE_NAMES[movingType]} to ${fileRank(to.row, to.col)}. Take a look at what squares it now covers before you respond.`;
+    const humanDangerBefore = kingDangerCount(boardBefore, state.humanColor);
+    const humanDangerAfter = kingDangerCount(boardAfter, state.humanColor);
+    if (humanDangerAfter > humanDangerBefore) {
+      msg += `Moved a ${PIECE_NAMES[movingType]} toward your king's side — check for any checks or threats before you respond.`;
+    } else {
+      msg += `Moved a ${PIECE_NAMES[movingType]} to ${fileRank(to.row, to.col)}. Take a look at what squares it now covers before you respond.`;
+    }
   }
   addNote(msg, "opponent");
+  showToast("Opponent", msg, "opponent");
+}
+
+function giveOscillationNudge(repeatedMove, color) {
+  const who = color === state.humanColor ? "You've" : "Your opponent has";
+  const piece = PIECE_NAMES[repeatedMove.type];
+  const msg = `${who} moved the ${piece} back and forth between ${fileRank(repeatedMove.from.row, repeatedMove.from.col)} and ${fileRank(repeatedMove.to.row, repeatedMove.to.col)} a few times now — that's usually a sign this isn't working. Consider defending it where it stands, trading it off, or activating a different piece instead.`;
+  addNote(msg, "nudge");
+  showToast("Worth noticing", msg, "nudge");
 }
 
 function giveHint() {
@@ -317,22 +460,20 @@ function giveHint() {
     if (score > bestScore) { bestScore = score; best = move; }
   }
 
-  const moving = state.board[best.from.row][best.from.col];
-  const target = state.board[best.to.row][best.to.col];
+  const boardBefore = state.board;
+  const moving = boardBefore[best.from.row][best.from.col];
+  const target = boardBefore[best.to.row][best.to.col];
+  const boardAfter = simulateMove(boardBefore, best.from, best.to);
   const name = PIECE_NAMES[moving.type];
 
   let msg = `If I were you, I'd move the ${name} from ${fileRank(best.from.row, best.from.col)} to ${fileRank(best.to.row, best.to.col)}. `;
   if (target) {
     msg += `It captures the ${PIECE_NAMES[target.type]} and, as far as I can see, doesn't lose material back.`;
   } else {
-    const enemy = enemyOf(state.humanColor);
-    const wasInDanger = isSquareAttacked(state.board, best.from.row, best.from.col, enemy);
-    const central = (best.to.row === 3 || best.to.row === 4) && (best.to.col === 3 || best.to.col === 4);
-    if (wasInDanger) msg += "That piece was under attack where it stood — this gets it to safety.";
-    else if (central) msg += "It helps take control of the center, which is usually a strong plan early on.";
-    else msg += "It looks like a safe, useful move from what I can calculate — but I'm only weighing material and safety, not deep strategy.";
+    msg += computeMoveInsight(boardBefore, boardAfter, best.from, best.to, moving.type, state.humanColor, state.moveCount + 1);
   }
   addNote(msg, "hint");
+  showToast("Suggested move", msg, "hint");
 }
 
 /* ---------------------------------------------------------------------
@@ -444,16 +585,26 @@ function onSquareClick(row, col) {
 }
 
 function playHumanMove(from, to) {
-  const moving = state.board[from.row][from.col];
-  const captured = state.board[to.row][to.col];
+  const boardBefore = state.board;
+  const moving = boardBefore[from.row][from.col];
+  const captured = boardBefore[to.row][to.col];
+  const color = state.humanColor;
 
-  state.board = simulateMove(state.board, from, to);
+  const boardAfter = simulateMove(boardBefore, from, to);
+  state.board = boardAfter;
   if (captured) state.capturedByWhite.push(captured);
 
   state.selected = null;
   state.legalForSelected = [];
+  state.moveCount++;
+  state.moveLog.push({ color, type: moving.type, from, to });
+  state.positionHistory.push(boardHash(boardAfter, enemyOf(color)));
 
-  giveMoveAdvice(moving.type, captured, from, to);
+  giveMoveAdvice(boardBefore, boardAfter, moving.type, captured, from, to, color, state.moveCount);
+
+  const repeated = checkOscillation(color);
+  if (repeated) giveOscillationNudge(repeated, color);
+
   render();
 
   const opponent = enemyOf(state.humanColor);
@@ -465,6 +616,10 @@ function playHumanMove(from, to) {
     endGame("Game is a draw");
     return;
   }
+  if (isThreefoldRepetition()) {
+    endGame("Game is a draw by repetition");
+    return;
+  }
 
   state.turn = opponent;
   render();
@@ -474,16 +629,25 @@ function playHumanMove(from, to) {
 function playAIMove() {
   if (state.gameOver) return;
   const aiColor = enemyOf(state.humanColor);
-  const move = pickAIMove(state.board, aiColor, state.difficulty);
+  const boardBefore = state.board;
+  const move = pickAIMove(boardBefore, aiColor, state.difficulty);
   if (!move) return;
 
-  const moving = state.board[move.from.row][move.from.col];
-  const captured = state.board[move.to.row][move.to.col];
+  const moving = boardBefore[move.from.row][move.from.col];
+  const captured = boardBefore[move.to.row][move.to.col];
 
-  state.board = simulateMove(state.board, move.from, move.to);
+  const boardAfter = simulateMove(boardBefore, move.from, move.to);
+  state.board = boardAfter;
   if (captured) state.capturedByBlack.push(captured);
 
-  opponentFeedback(moving.type, captured, move.to);
+  state.moveCount++;
+  state.moveLog.push({ color: aiColor, type: moving.type, from: move.from, to: move.to });
+  state.positionHistory.push(boardHash(boardAfter, state.humanColor));
+
+  opponentFeedback(boardBefore, boardAfter, moving.type, captured, move.to, aiColor);
+
+  const repeated = checkOscillation(aiColor);
+  if (repeated) giveOscillationNudge(repeated, aiColor);
 
   const human = state.humanColor;
   if (isCheckmate(state.board, human)) {
@@ -496,9 +660,20 @@ function playAIMove() {
     endGame("Game is a draw");
     return;
   }
+  if (isThreefoldRepetition()) {
+    render();
+    endGame("Game is a draw by repetition");
+    return;
+  }
 
   state.turn = human;
   render();
+}
+
+function isThreefoldRepetition() {
+  const last = state.positionHistory[state.positionHistory.length - 1];
+  const count = state.positionHistory.filter(h => h === last).length;
+  return count >= 3;
 }
 
 function endGame(message) {
@@ -518,8 +693,13 @@ function newGame() {
   state.gameOver = false;
   state.capturedByWhite = [];
   state.capturedByBlack = [];
+  state.moveCount = 0;
+  state.moveLog = [];
+  state.positionHistory = [boardHash(state.board, "white")];
+  state.fallbackTick = 0;
   document.getElementById("chatLog").innerHTML = "";
   document.getElementById("modalBackdrop").classList.remove("visible");
+  document.getElementById("coachToast").classList.remove("show");
   addNote("Welcome! Make a move and I'll explain what it does and what to look for next.", "system");
   render();
 }

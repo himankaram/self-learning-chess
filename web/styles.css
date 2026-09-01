@@ -218,6 +218,62 @@ body {
   background: var(--danger) !important;
 }
 
+/* ---------- Coach toast (pops up over the board) ---------- */
+
+.toast-anchor {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  height: 0;
+}
+
+.coach-toast {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: min(92vw, 520px);
+  transform: translate(-50%, -14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.32s ease;
+  background: linear-gradient(160deg, #2c2f26, #23261e);
+  border: 1px solid var(--gold-dim);
+  border-radius: 10px;
+  padding: 14px 20px;
+  box-shadow: 0 16px 32px rgba(0,0,0,0.5);
+  z-index: 5;
+}
+
+.coach-toast.show {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
+.coach-toast .toast-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+
+.coach-toast .toast-text {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.08rem;
+  line-height: 1.4;
+  color: var(--text-main);
+}
+
+.coach-toast.opponent .toast-label { color: var(--text-soft); }
+.coach-toast.nudge { border-color: var(--danger); }
+.coach-toast.nudge .toast-label { color: var(--danger); }
+.coach-toast.hint .toast-label { color: var(--success); }
+
 /* ---------- Captured pieces tray ---------- */
 
 .captured-row {
@@ -311,6 +367,11 @@ body {
 
 .note.hint {
   border-left-color: var(--success);
+}
+
+.note.nudge {
+  border-left-color: var(--danger);
+  color: var(--text-main);
 }
 
 .note.system {
