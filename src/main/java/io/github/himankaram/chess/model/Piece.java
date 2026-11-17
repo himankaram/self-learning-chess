@@ -1,3 +1,5 @@
+package io.github.himankaram.chess.model;
+
 import java.util.ArrayList;
 public abstract class Piece {
 	private Location currentLocation;
@@ -11,7 +13,7 @@ public abstract class Piece {
 		this.color=color;
 		this.status=true;
 		this.ImageSource=ImageSource;
-		this.LegalMovements= new ArrayList();
+		this.LegalMovements= new ArrayList<>();
 	}
 	public Location getLocation()
 	{

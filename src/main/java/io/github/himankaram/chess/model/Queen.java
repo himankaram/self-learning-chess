@@ -1,5 +1,7 @@
-public class Bishop extends Piece {
-	public Bishop (Location obj, String color, String ImageSource) {
+package io.github.himankaram.chess.model;
+
+public class Queen extends Piece {
+	public Queen (Location obj, String color, String ImageSource) {
 		super(obj,color,ImageSource);
 	}
 	public void calculateLegalMovements(Piece[][] board) {
@@ -7,7 +9,7 @@ public class Bishop extends Piece {
 		int row= getLocation().getRow();
 		getLegalMovements().clear();
 
-		int[][] directions = { {1,1}, {1,-1}, {-1,1}, {-1,-1} };
+		int[][] directions = { {0,1}, {0,-1}, {1,0}, {-1,0}, {1,1}, {1,-1}, {-1,1}, {-1,-1} };
 		for (int[] dir : directions) {
 			int r = row + dir[0];
 			int c = column + dir[1];

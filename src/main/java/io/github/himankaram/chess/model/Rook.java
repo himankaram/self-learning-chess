@@ -1,3 +1,5 @@
+package io.github.himankaram.chess.model;
+
 public class Rook extends Piece {
 	public Rook (Location obj, String color, String ImageSource) {
 		super(obj,color,ImageSource);

@@ -1,3 +1,6 @@
+package io.github.himankaram.chess;
+
+import io.github.himankaram.chess.model.*;
 import javax.swing.*;
 import java.util.*;
 import java.util.Timer;
