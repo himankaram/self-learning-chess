@@ -1,15 +1,17 @@
-public class Knight extends Piece {
-	public Knight (Location obj, String color, String ImageSource) {
+package io.github.himankaram.chess.model;
+
+public class King extends Piece {
+	public King (Location obj, String color, String ImageSource) {
 		super(obj,color,ImageSource);
 	}
 	public void calculateLegalMovements(Piece[][] board) {
-		int column= getLocation().getColumn();
-		int row= getLocation().getRow();
+		int column = getLocation().getColumn();
+		int row = getLocation().getRow();
 		getLegalMovements().clear();
 
 		int[][] offsets = {
-			{1,2},{-1,2},{1,-2},{-1,-2},
-			{2,1},{-2,1},{2,-1},{-2,-1}
+			{0,1},{0,-1},{1,0},{-1,0},
+			{1,1},{1,-1},{-1,1},{-1,-1}
 		};
 		for (int[] off : offsets) {
 			int r = row + off[0];

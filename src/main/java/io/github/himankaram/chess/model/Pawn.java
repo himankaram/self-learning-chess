@@ -1,3 +1,5 @@
+package io.github.himankaram.chess.model;
+
 public class Pawn extends Piece {
 	private boolean startLocation;
 	public Pawn (Location obj, String color, String ImageSource) {

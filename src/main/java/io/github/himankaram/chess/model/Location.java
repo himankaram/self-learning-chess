@@ -1,3 +1,5 @@
+package io.github.himankaram.chess.model;
+
 public class Location {
 	private int row, column;
 	public Location(int row, int column) {

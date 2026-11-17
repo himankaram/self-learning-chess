@@ -1,3 +1,5 @@
+package io.github.himankaram.chess.model;
+
 import java.util.ArrayList;
 public abstract class Piece {
 	private Location currentLocation;
