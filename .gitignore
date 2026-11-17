@@ -1,4 +1,17 @@
+# macOS
+.DS_Store
+
+# Eclipse
 bin/
 .settings/
 .classpath
 .project
+
+# IntelliJ / VS Code
+.idea/
+*.iml
+.vscode/
+
+# Java build output
+*.class
+target/
